@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 )
 
+const LogFilePath = "logs.txt"
+
 type Storage interface {
+	// a struct that represents a storage interface
 	Get(key string) (string, error)
 	Set(key string, value string) error
 	Delete(key string) error
@@ -15,10 +21,13 @@ type Storage interface {
 }
 
 type KeyValue struct {
+	// a struct that represents a key-value storage
+	mu   sync.RWMutex
 	data map[string]string
 }
 
 type LogEntry struct {
+	// a struct that represents a log entry
 	Operation string `json:"operation"`
 	Key       string `json:"key"`
 	Value     string `json:"value,omitempty"`
@@ -46,6 +55,7 @@ func CreateLog(filepath string) error {
 
 func WriteLog(filename string, operation string, key string, value string) {
 	// Write storage operations in log to rebuild the storage in case of fail
+	// Each operation does not erase the original file content
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println(err)
@@ -70,29 +80,71 @@ func NewKeyValueStorage() *KeyValue {
 }
 
 func (k *KeyValue) Set(key string, value string) error {
-	WriteLog("logs.txt", "SET", key, value)
+	WriteLog(LogFilePath, "SET", key, value)
+	k.mu.Lock()
 	k.data[key] = value
+	k.mu.Unlock()
 	return nil
 }
 
 func (k *KeyValue) Get(key string) (string, error) {
+	k.mu.RLock()
 	value, exists := k.data[key]
+	defer k.mu.RUnlock()
 	if !exists {
+		WriteLog(LogFilePath, "GET", key, "")
 		return "", fmt.Errorf("key %s not found", key)
 	}
+	WriteLog(LogFilePath, "GET", key, value)
+
 	return value, nil
 }
 
 func (k *KeyValue) Delete(key string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	_, exists := k.data[key]
 	if !exists {
+		WriteLog(LogFilePath, "DELETE", key, "")
 		return fmt.Errorf("Key %s not found", key)
 	}
 	delete(k.data, key)
+
+	WriteLog(LogFilePath, "DELETE", key, "")
 	return nil
 }
 
 func (k *KeyValue) Exists(key string) (bool, error) {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
 	_, exists := k.data[key]
+	WriteLog(LogFilePath, "EXISTS", key, "")
 	return exists, nil
 }
+
+func (k *KeyValue) ReBuildStore(filename string) {
+	file, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(file)))
+	// Process each json object as a whole
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		line := scanner.Text()
+		var Entry LogEntry
+		err := json.Unmarshal([]byte(line), &Entry)
+
+		if err != nil {
+			fmt.Println("Error parsing line", err)
+			continue
+		}
+		fmt.Println("Entry", Entry)
+	}
+
+}
+
+//func RebuildStorage(filename string) {
+//	// Load the log file and put in primary memory
+//
+//}

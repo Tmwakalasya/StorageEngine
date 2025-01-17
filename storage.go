@@ -11,6 +11,7 @@ import (
 )
 
 const LogFilePath = "logs.txt"
+const Rebuiltlog = "logs3.txt"
 
 type Storage interface {
 	// a struct that represents a storage interface
@@ -58,7 +59,7 @@ func WriteLog(filename string, operation string, key string, value string) {
 	// Each operation does not erase the original file content
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Error opening file %s: %v\n", filename, err)
 		return
 	}
 	defer file.Close()
@@ -66,14 +67,15 @@ func WriteLog(filename string, operation string, key string, value string) {
 	// converting the data structure (such as a struct or a slice) into a JSON string using the json
 	data, err := json.Marshal(entry)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Error marshalling log entry: %v\n", err)
 		return
 	}
 	_, err = file.Write(append(data, '\n'))
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Error writing to file %s: %v\n", filename, err)
+	} else {
+		fmt.Printf("Successfully wrote to file %s: %s\n", filename, string(data))
 	}
-
 }
 func NewKeyValueStorage() *KeyValue {
 	return &KeyValue{data: make(map[string]string)}
@@ -139,12 +141,19 @@ func (k *KeyValue) ReBuildStore(filename string) {
 			fmt.Println("Error parsing line", err)
 			continue
 		}
-		fmt.Println("Entry", Entry)
+		fmt.Println("Entry: ", Entry)
+		if Entry.Operation != "GET" {
+			switch Entry.Operation {
+			case "SET":
+				k.data[Entry.Key] = Entry.Value
+			case "DELETE":
+				delete(k.data, Entry.Key)
+			}
+			WriteLog(Rebuiltlog, Entry.Operation, Entry.Key, Entry.Value)
+		}
 	}
-
 }
 
-//func RebuildStorage(filename string) {
-//	// Load the log file and put in primary memory
-//
-//}
+func (k *KeyValue) Replication() {
+
+}

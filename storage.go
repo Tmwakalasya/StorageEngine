@@ -54,27 +54,27 @@ func CreateLog(filepath string) error {
 	return nil
 }
 
-func WriteLog(filename string, operation string, key string, value string) {
+func WriteLog(filename string, operation string, key string, value string) error {
 	// Write storage operations in log to rebuild the storage in case of fail
 	// Each operation does not erase the original file content
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Printf("Error opening file %s: %v\n", filename, err)
-		return
+		return err
 	}
 	defer file.Close()
 	entry := LogEntry{operation, key, value}
 	// converting the data structure (such as a struct or a slice) into a JSON string using the json
 	data, err := json.Marshal(entry)
 	if err != nil {
-		fmt.Printf("Error marshalling log entry: %v\n", err)
-		return
+		return fmt.Errorf("Error marshalling log entry: %v\n", err)
 	}
 	_, err = file.Write(append(data, '\n'))
 	if err != nil {
-		fmt.Printf("Error writing to file %s: %v\n", filename, err)
+		return fmt.Errorf("Error writing to file %s: %v\n", filename, err)
 	} else {
 		fmt.Printf("Successfully wrote to file %s: %s\n", filename, string(data))
+		return nil
 	}
 }
 func NewKeyValueStorage() *KeyValue {
@@ -125,33 +125,53 @@ func (k *KeyValue) Exists(key string) (bool, error) {
 }
 
 func (k *KeyValue) ReBuildStore(filename string) {
+	fmt.Println("The rebuild method has been called")
 	file, err := os.ReadFile(filename)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error reading file:", err)
+		return
 	}
+	fmt.Println("File read successfully")
 	scanner := bufio.NewScanner(strings.NewReader(string(file)))
-	// Process each json object as a whole
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
+		fmt.Println("Read line:", line)
 		var Entry LogEntry
 		err := json.Unmarshal([]byte(line), &Entry)
-
 		if err != nil {
-			fmt.Println("Error parsing line", err)
+			fmt.Println("Error unmarshalling line:", err, line)
 			continue
 		}
-		fmt.Println("Entry: ", Entry)
+		fmt.Printf("Parsed entry: %v\n", Entry)
+
 		if Entry.Operation != "GET" {
-			switch Entry.Operation {
-			case "SET":
-				k.data[Entry.Key] = Entry.Value
-			case "DELETE":
-				delete(k.data, Entry.Key)
-			}
-			WriteLog(Rebuiltlog, Entry.Operation, Entry.Key, Entry.Value)
+			fmt.Println("Non-GET operation detected")
+		} else {
+			fmt.Println("Skipping the GET operation")
+			continue
+		}
+
+		switch Entry.Operation {
+		case "SET":
+			k.data[Entry.Key] = Entry.Value
+			fmt.Println("Set operation: key =", Entry.Key, "value =", Entry.Value)
+		case "DELETE":
+			delete(k.data, Entry.Key)
+			fmt.Println("Delete operation: key =", Entry.Key)
+		}
+		fmt.Println("About to write to the log")
+		err = WriteLog(Rebuiltlog, Entry.Operation, Entry.Key, Entry.Value)
+		if err != nil {
+			fmt.Println("Error writing log:", err)
+		} else {
+			fmt.Println("Log written successfully")
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error scanning file:", err)
+	}
+	fmt.Println("ReBuildStore method completed")
 }
 
 func (k *KeyValue) Replication() {

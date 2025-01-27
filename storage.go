@@ -175,5 +175,30 @@ func (k *KeyValue) ReBuildStore(filename string) {
 }
 
 func (k *KeyValue) Replication() {
+	// create a new instance of the  replica kv store
+	replica := NewKeyValueStorage()
+	fmt.Println(replica)
+	if replica == nil {
+		fmt.Println("Failed to create a replica")
+	} else {
+		fmt.Println("Replica created successfully.")
+	}
+	replica.ReBuildStore(LogFilePath)
+	fmt.Println("Current data in the replica: ", replica)
 
+	if k.CompareReplica(replica) == false {
+		fmt.Println("Replica is not a copy of the original store")
+	}
+	fmt.Println("Replica matches the original store")
+
+}
+
+func (k *KeyValue) CompareReplica(Replica *KeyValue) bool {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	Replica.mu.RLock()
+	defer Replica.mu.RUnlock()
+
+	b := fmt.Sprintf("%v", k.data) == fmt.Sprintf("%v", Replica.data)
+	return b
 }

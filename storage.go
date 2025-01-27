@@ -184,7 +184,7 @@ func (k *KeyValue) Replication() {
 		fmt.Println("Replica created successfully.")
 	}
 	replica.ReBuildStore(LogFilePath)
-	fmt.Println("Current data in the replica: ", replica)
+	fmt.Println("State of the replica: ", replica)
 
 	if k.CompareReplica(replica) == false {
 		fmt.Println("Replica is not a copy of the original store")

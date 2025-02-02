@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const LogFilePath = "logs.txt"
@@ -82,15 +83,19 @@ func NewKeyValueStorage() *KeyValue {
 }
 
 func (k *KeyValue) Set(key string, value string) error {
-	kvstore_writes_total.Inc()
+	startTime := time.Now()
+	kvstoreWritesTotal.Inc()
 	WriteLog(LogFilePath, "SET", key, value)
 	k.mu.Lock()
 	k.data[key] = value
 	k.mu.Unlock()
+	latency := time.Since(startTime).Seconds()
+	kvstoreWritesLatencySeconds.Observe(latency)
 	return nil
 }
 
 func (k *KeyValue) Get(key string) (string, error) {
+	startTime := time.Now()
 	k.mu.RLock()
 	value, exists := k.data[key]
 	defer k.mu.RUnlock()
@@ -98,8 +103,11 @@ func (k *KeyValue) Get(key string) (string, error) {
 		WriteLog(LogFilePath, "GET", key, "")
 		return "", fmt.Errorf("key %s not found", key)
 	}
-	kvstore_reads_total.Inc()
+	kvstoreReadsTotal.Inc()
 	WriteLog(LogFilePath, "GET", key, value)
+
+	latency := time.Since(startTime).Seconds()
+	kvstoreReadsLatencySeconds.Observe(latency)
 	return value, nil
 }
 
@@ -108,12 +116,12 @@ func (k *KeyValue) Delete(key string) error {
 	defer k.mu.Unlock()
 	_, exists := k.data[key]
 	if !exists {
-		kvstore_errors_total.Inc()
+		kvstoreErrorsTotal.Inc()
 		WriteLog(LogFilePath, "DELETE", key, "")
 		return fmt.Errorf("Key %s not found", key)
 	}
 	delete(k.data, key)
-	kvstore_writes_total.Inc()
+	kvstoreWritesTotal.Inc()
 	WriteLog(LogFilePath, "DELETE", key, "")
 	return nil
 }

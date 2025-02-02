@@ -25,17 +25,5 @@ func main() {
 	store1.Delete("Customer1")
 	store1.Get("Customer2")
 
-	store1.Replication()
-
-	replica := NewKeyValueStorage()
-	replica.ReBuildStore(LogFilePath)
-
-	isEqual := store1.CompareReplica(replica)
-	if isEqual {
-		fmt.Println("Replication successful: The replica matches the original store.")
-	} else {
-		fmt.Println("Replication failed: The replica does not match the original store.")
-	}
-
 	select {}
 }

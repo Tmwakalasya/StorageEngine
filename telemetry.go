@@ -18,7 +18,7 @@ var (
 var (
 	kvstoreWritesTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kvstore_total_writes",
+			Name: "kvstore_writes_total",
 			Help: "Total number of writes from the key-value store",
 		},
 	)
@@ -27,7 +27,7 @@ var (
 var (
 	kvstoreErrorsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kvstore_total_errors",
+			Name: "kvstore_errors_total",
 			Help: "Total number of failed operations",
 		},
 	)
@@ -51,11 +51,13 @@ var (
 )
 
 func initialize() {
-	prometheus.MustRegister(kvstoreReadsTotal)
-	prometheus.MustRegister(kvstoreWritesTotal)
-	prometheus.MustRegister(kvstoreErrorsTotal)
-	prometheus.MustRegister(kvstoreReadsLatencySeconds)
-	prometheus.MustRegister(kvstoreWritesLatencySeconds)
+	prometheus.MustRegister(
+		kvstoreReadsTotal,
+		kvstoreErrorsTotal,
+		kvstoreWritesLatencySeconds,
+		kvstoreReadsLatencySeconds,
+		kvstoreWritesTotal,
+	)
 	fmt.Println("Prometheus metrics registered successfully")
 
 }

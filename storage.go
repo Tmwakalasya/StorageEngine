@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
+	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -56,7 +59,7 @@ func CreateLog(filepath string) error {
 }
 
 func WriteLog(filename string, operation string, key string, value string) error {
-	// Write storage operations in log to rebuild the storage in case of fail
+	// Write storage operations in log to rebuild the storage in case of a fail
 	// Each operation does not erase the original file content
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -84,11 +87,11 @@ func NewKeyValueStorage() *KeyValue {
 
 func (k *KeyValue) Set(key string, value string) error {
 	startTime := time.Now()
-	kvstoreWritesTotal.Inc()
 	WriteLog(LogFilePath, "SET", key, value)
 	k.mu.Lock()
 	k.data[key] = value
 	k.mu.Unlock()
+	kvstoreWritesTotal.Inc()
 	latency := time.Since(startTime).Seconds()
 	kvstoreWritesLatencySeconds.Observe(latency)
 	return nil
@@ -211,4 +214,94 @@ func (k *KeyValue) CompareReplica(Replica *KeyValue) bool {
 
 	b := fmt.Sprintf("%v", k.data) == fmt.Sprintf("%v", Replica.data)
 	return b
+}
+
+func DelayAdd(duration time.Duration) {
+	start := time.Now()
+	for time.Since(start) < duration {
+
+	}
+}
+
+func TrackFileChanges(filename string) {
+	// Create a new file watcher
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatalf("Failed to create watcher: %v", err)
+	}
+	defer watcher.Close()
+
+	// Add file to watcher
+	err = watcher.Add(filename)
+	if err != nil {
+		log.Fatalf("Failed to add file to watcher: %v", err)
+	}
+	fmt.Println("Tracking file changes on:", filename)
+
+	// Initialize key-value store
+	kv := NewKeyValueStorage()
+	var wg sync.WaitGroup
+	var lastOffset int64
+
+	for {
+		select {
+		// Handle file events
+		case ev := <-watcher.Events:
+			log.Println("Event:", ev)
+			if ev.Op&fsnotify.Write == fsnotify.Write {
+				log.Println("File modified")
+			}
+			file, err := os.Open(filename)
+			if err != nil {
+				log.Printf("Error opening file %s: %v", filename, err)
+				continue
+			}
+			defer file.Close()
+
+			_, err = file.Seek(lastOffset, io.SeekStart)
+			if err != nil {
+				log.Printf("Error seeking to end of file %s: %v", filename, err)
+				continue
+			}
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := scanner.Text()
+				fmt.Println("New log entry:", line)
+			}
+			if err := scanner.Err(); err != nil {
+				log.Println("Error reading new content from file %s: %v ", filename, err)
+			}
+
+			lastOffset, err := file.Seek(0, io.SeekEnd)
+			if err != nil {
+				log.Printf("Failed to update the last offset in file %s: %v", filename, err)
+			}
+			fmt.Println("Updated last offset:", lastOffset)
+
+			if ev.Op&fsnotify.Rename == fsnotify.Rename || ev.Op&fsnotify.Remove == fsnotify.Remove {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for {
+						time.Sleep(1 * time.Second)
+						err = watcher.Add(filename)
+						if err != nil {
+							log.Printf("Successfully re-added file %s to watcher", filename)
+							break
+						}
+						log.Printf("Retrying to add file %s to watcher: %v", filename, err)
+					}
+
+				}()
+
+			}
+			log.Println("File modified, replication triggered")
+			kv.ReBuildStore(filename)
+
+		// Handle watcher errors
+		case err := <-watcher.Errors:
+			log.Println("Error:", err)
+		}
+	}
+	wg.Wait()
 }
